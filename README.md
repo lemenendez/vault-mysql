@@ -14,7 +14,7 @@ git clone git@github.com:lemenendez/vault-mysql.git
 
 ## Enter into valault server
 
-`docker-compose exec vault-server bash`
+`docker-compose exec vault-server sh`
 
 ## Init vault server
 
@@ -47,22 +47,18 @@ existing unseal keys shares. See "vault operator rekey" for more information.`
 
 When a Vault server is started, it starts in a sealed state. In this state, Vault is configured to know where and how to access the physical storage, but doesn't know how to decrypt any of it <https://www.vaultproject.io/docs/concepts/seal>
 
-`docker-compose build vault-client`
+If the server was down, we need to unsealed it. Run the command to unslead the server.
+`vault operator unseal <GENERATED KEY 1>`
+`vault operator unseal <GENERATED KEY 2>`
+`vault operator unseal <GENERATED KEY 3>`
 
-## Vault State
+## Config database secrets engine
 
+Enable database secret engine: `vault secrets enable database`
 
+`Success! Enabled the database secrets engine at: database/`
 
-## Commands
-
-`vault stat`
-`vault init`
-`vault operator unselad` 3 times to unseal
-`vault login` login into the sever
-`vault secrets enable database`
-
-Success! Enabled the database secrets engine at: database/
-
+Setup mysql database secret management plugin:
 `vault write database/config/my-mysql-database \
     plugin_name=mysql-database-plugin \
     connection_url="{{username}}:{{password}}@tcp(mysql.server:3306)/" \
@@ -70,6 +66,12 @@ Success! Enabled the database secrets engine at: database/
     username="root" \
     password="devsecret"
 `
+
+important note:After configuring the root user, it is highly recommended you rotate that user's password such that the vault user is not accessible by any users other than Vault itself
+`vault write -force database/rotate-root/my-database`
+
+Create my-role role that will create mysql users:
+
 `vault write database/roles/my-role \
     db_name=my-mysql-database \
     creation_statements="CREATE USER '{{name}}'@'%' IDENTIFIED BY '{{password}}';GRANT SELECT ON *.* TO '{{name}}'@'%';" \
@@ -78,3 +80,32 @@ Success! Enabled the database secrets engine at: database/
 `
 
 Success! Data written to: database/roles/my-role
+
+## Usage
+
+Gets credentials for mysql with a duration of 1h
+
+`vault read database/creds/my-role`
+
+`
+Key                Value
+---                -----
+lease_id           database/creds/my-role/k9G07KDhYefPeNHZ4xdNBk0D
+lease_duration     1h
+lease_renewable    true
+password           hiNpVra-KDiYMsNj9Ksl
+username           v-root-my-role-RTxaDMHlb2B0zx2vl
+`
+
+Check user list
+`SELECT user FROM mysql.user`
+
+`docker-compose build vault-client`
+
+## Commands
+
+`vault stat`
+`vault init`
+`vault operator unseal` 3 times to unseal
+`vault login` login into the sever
+`vault secrets enable database`
